@@ -1,0 +1,88 @@
+services:
+  app:
+    build: .
+    ports:
+      - 8000:8000
+    command: python3 main.py
+    env_file:
+      - .env
+    volumes:
+      - .:/code
+    environment:
+      - REDIS_URL=redis://redis:6379/0
+      - POSTGRES_URL=postgresql://root:1234@postgres:5432/s3
+    depends_on:
+      - redis
+      - postgres
+      - migrate
+    networks:
+      - backend
+
+  migrate:
+    build: .
+    command: python3 run_migrate.py
+    env_file:
+      - .env
+    volumes:
+      - .:/code
+    environment:
+      - REDIS_URL=redis://redis:6379/0
+      - POSTGRES_URL=postgresql://root:1234@postgres:5432/s3
+    depends_on:
+      - postgres
+    networks:
+      - backend
+
+  worker:
+    build: .
+    command: celery -A worker.celery worker --loglevel=info
+    env_file:
+      - .env
+    volumes:
+      - .:/code
+    environment:
+      - REDIS_URL=redis://redis:6379/0
+      - POSTGRES_URL=postgresql://root:1234@postgres:5432/s3
+    depends_on:
+      - app
+      - redis
+      - postgres
+      - migrate
+    networks:
+      - backend
+
+  redis:
+    image: redis:alpine
+    command: sh -c "redis-server --appendonly yes"
+    ports:
+      - 6379:6379
+    restart: always
+    networks:
+      - backend
+    volumes:
+      - redis:/data
+
+  postgres:
+    container_name: postgres
+    image: postgres:13.3
+    env_file:
+      - .env
+    environment:
+      POSTGRES_DB: s3
+      POSTGRES_USER: root
+      POSTGRES_PASSWORD: 1234
+      PGDATA: /var/lib/postgresql/data
+    ports:
+      - '5432:5432'
+    networks:
+      - backend
+    volumes:
+      - postgres-db-volume:/var/lib/postgresql/data
+
+networks:
+  backend:
+    driver: bridge
+
+volumes:
+  redis:
+  postgres-db-volume:
